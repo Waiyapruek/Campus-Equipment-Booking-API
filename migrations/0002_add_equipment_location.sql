@@ -1,0 +1,1 @@
+ALTER TABLE equipment ADD COLUMN location TEXT NOT NULL DEFAULT 'Unknown';
