@@ -26,9 +26,10 @@ const app = new Hono<{ Bindings: CloudflareBindings }>().basePath(BASE_URL)
 const dateTimePattern =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})?$/
 
-const bookingSelect = `SELECT b.id, printf('eq-%d', b.equipment_id) AS equipment_id,
-                              e.name AS equipment_name, b.borrower_name, b.start_date,
-                              b.end_date, b.purpose, b.status, b.created_at
+const bookingSelect = `SELECT b.id, printf('eq-%d', b.equipment_id) AS equipmentId,
+                              e.name AS equipmentName, b.borrower_name AS borrowerName,
+                              b.start_date AS startAt, b.end_date AS endAt,
+                              b.purpose, b.status, b.created_at AS createdAt
                        FROM bookings b
                        JOIN equipment e ON e.id = b.equipment_id`
 
@@ -186,12 +187,12 @@ app.post('/bookings', async (c) => {
     !borrowerName?.trim() ||
     !startAt ||
     !endAt ||
-    !purpose
+    !purpose?.trim()
   ) {
     return c.json(
       {
         error:
-          'equipmentId, borrowerName, startDate, and endDate are required',
+          'equipmentId, borrowerName, startAt, endAt, and purpose are required',
       },
       400,
     )
@@ -246,8 +247,9 @@ app.post('/bookings', async (c) => {
         `INSERT INTO bookings
           (equipment_id, borrower_name, start_date, end_date, purpose)
          VALUES (?, ?, ?, ?, ?)
-         RETURNING id, printf('eq-%d', equipment_id) AS equipment_id,
-                   borrower_name, start_date, end_date, purpose, status, created_at`,
+         RETURNING id, printf('eq-%d', equipment_id) AS equipmentId,
+                   borrower_name AS borrowerName, start_date AS startAt,
+                   end_date AS endAt, purpose, status, created_at AS createdAt`,
       )
       .bind(
         Number(equipmentNumber),
