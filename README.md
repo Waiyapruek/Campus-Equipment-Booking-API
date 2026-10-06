@@ -1,71 +1,91 @@
-## Run the API
+# Campus Equipment Booking API
 
-Install the dependencies from the project root:
+TypeScript/Hono API running on a Cloudflare Worker with a local or remote
+Cloudflare D1 SQLite database.
 
-```txt
+## Run locally
+
+Requirements: Node.js 18+ and npm.
+
+```powershell
 npm install
-```
-
-Apply all D1 migrations to the local database before starting the API:
-
-```txt
 npx wrangler d1 migrations apply eq-db --local
-```
-
-Start the local Cloudflare Worker:
-
-```txt
 npm run dev
 ```
 
-The API is available at `http://localhost:8787`. Its routes are mounted under
-the `/api` base path, such as `http://localhost:8787/api/equipment`.
+The local Base API URL is normally `http://localhost:8787/api`; the evidence
+in this submission was run at `http://127.0.0.1:8788/api` because port 8787
+was already occupied. The five seeded
+equipment records are created by the migrations. Use `npm run deploy` to
+deploy the Worker, then apply migrations with
+`npx wrangler d1 migrations apply eq-db --remote`.
 
-To deploy the Worker to Cloudflare:
+## API contract
 
-```txt
-npm run deploy
+All successful responses are JSON except `DELETE`, which returns `204` with no
+body. Every error is JSON in the form `{ "error": "message" }`.
+
+| Method | Path | Success | Description |
+| --- | --- | ---: | --- |
+| GET | `/equipment` | 200 | List equipment |
+| POST | `/equipment` | 201 | Create equipment |
+| GET | `/bookings` | 200 | List bookings |
+| GET | `/bookings/:id` | 200 | Get one booking |
+| POST | `/bookings` | 201 | Create a booking |
+| PATCH | `/bookings/:id` | 200 | Partially update a booking |
+| DELETE | `/bookings/:id` | 204 | Delete a booking |
+
+Create and update booking payloads use:
+
+```json
+{
+  "equipmentId": "eq-1",
+  "borrowerName": "Somchai Jaidee",
+  "startAt": "2026-10-20T09:00:00.000Z",
+  "endAt": "2026-10-20T11:00:00.000Z",
+  "purpose": "Class presentation"
+}
 ```
 
-## Database
+Booking responses include `id`, `equipmentId`, `borrowerName`, `startAt`,
+`endAt`, and `purpose` (plus status, equipment name, and created time).
+`equipmentId` must refer to an existing equipment record. Times must be valid
+date-time values and `startAt` must be strictly before `endAt`. Two bookings
+for the same equipment may touch at an endpoint, but may not overlap; an
+overlap returns `409`.
 
-This API uses Cloudflare D1 through the `DB` binding, configured for the
-`eq-db` database in `wrangler.jsonc`. The migrations include the schema and
-five sample equipment records. Apply them locally with:
+Equipment creation requires non-empty `name`, `location`, and `category`, plus
+an optional positive integer `quantity`. Booking and equipment identifiers use
+the `eq-{number}` format for equipment and positive integers for bookings.
+Invalid or missing data returns `400`; missing resources return `404`.
 
-```txt
-npx wrangler d1 migrations apply eq-db --local
+## Schema / ERD
+
+```text
+equipment (1) ───────< (many) bookings
+  id PK                 id PK
+  name                  equipment_id FK -> equipment.id
+  location              borrower_name
+  category              start_date
+  description           end_date
+  quantity              purpose
+  available_quantity    status
+  created_at            created_at
 ```
 
-Apply pending migrations to the deployed database with:
+`migrations/0001_eq-db.sql` defines the tables, foreign key, checks, and
+indexes. Later migrations add equipment location and seed five records.
 
-```txt
-npx wrangler d1 migrations apply eq-db --remote
-```
+## Test evidence
 
-The remote database ID is configured in `wrangler.jsonc`.
+The reproducible curl cases and their observed responses are recorded in
+[TEST_EVIDENCE.md](./TEST_EVIDENCE.md). The evidence uses
+`http://localhost:8787/api` and includes successful CRUD operations, invalid
+input, not-found handling, and an overlap conflict.
 
-Available endpoints:
+## Type generation
 
-- `GET /api/equipment` lists equipment.
-- `POST /api/equipment` creates equipment with `name`, `location` (for example,
-  `Building 1`), and `category`, plus optional `description` and positive
-  integer `quantity`. Equipment
-  IDs are returned in the `eq-{number}` format.
-- `GET /api/booking` lists bookings.
-- `POST /api/booking` creates a booking with `equipmentId` (for example,
-  `eq-1`), `borrowerName`,
-  `startAt`, `endAt` (`YYYY-MM-DDTHH:mm`), and `purpose`.
-
-To generate or synchronize types from the Worker configuration, run:
-
-```txt
+```powershell
 npm run cf-typegen
 ```
-
-Pass the `CloudflareBindings` as generics when instantiating `Hono`:
-
-```ts
-// src/index.ts
-const app = new Hono<{ Bindings: CloudflareBindings }>()
-```
+# Campus-Equipment-Booking-API
